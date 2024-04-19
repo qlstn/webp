@@ -10,7 +10,7 @@ def root():
     
     contents = requests.get(URL).text
     
-    return { "message"" contents }
+    return { "message": contents }
 
 @app.get("/home")
 def home():
