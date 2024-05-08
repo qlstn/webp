@@ -1,73 +1,55 @@
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from pydantic import BaseModel
-
-SQLALCHEMY_DATABASE_URL = "sqlite:///../todo.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base = declarative_base()
+from fastapi import FastAPI, Form
+from fastapi.responses import HTMLResponse
+import requests
 
 app = FastAPI()
 
-class Todo(Base):
-    __tablename__ = "todos"
-    __allow_unmapped__ = True
-    
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, index=True)
-    description = Column(String, iindex=True)
-    
-Base.metadata.create_all(bind=engine)
+CAT_API_URL = "https://api.thecatapi.com/v1/images/search?breed_ids={}&limit=1"
 
-class TodoCreate(BaseModel):
-    title: str
-    description: str
-    
-class TodoUpdate(BaseModel):
-    title: str
-    description: str
-    
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        
-@app.post("/todos/")
-def create_todo(todo: TodoCreate, db: Session = Depends(get_db)):
-    db_todo = Todo(title=todo.tile, description=todo.description)
-    db.add(db_todo)
-    db.commit()
-    db.refresh(db_todo)
-    return db_todo
+@app.get("/", response_class=HTMLResponse)
+async def home():
+    return '''
+    <html>
+    <head>
+        <title>Cat Viewer</title>
+    </head>
+    <body>
+        <h1>Cat Viewer</h1>
+        <form action="/get_cat" method="post">
+            <label for="catName">Enter Cat Name:</label>
+            <input type="text" id="catName" name="catName">
+            <button type="submit">Show Cat</button>
+        </form>
+        <div id="catImageContainer"></div>
+    </body>
+    </html>
+    '''
 
-@app.get("/todos/{todo_id}")
-def read_todo(todo_id: int, db: Session = Depends(get_db)):
-    db_todo = db.query(Todo).filter(Todo.id == todo_id).first()
-    if db_todo is None:
-        raise HTTPException(status_code=404, detail="Todo not found")
-    return db_todo
+@app.post("/get_cat", response_class=HTMLResponse)
+async def get_cat(cat_name: str = Form(...)):
+    breed_id = cat_name
+    response = requests.get(CAT_API_URL.format(breed_id))
+    data = response.json()
+    cat_image_url = data[0]['url']
+    return f'''
+    <html>
+    <head>
+        <title>Cat Viewer</title>
+    </head>
+    <body>
+        <h1>Cat Viewer</h1>
+        <form action="/get_cat" method="post">
+            <label for="catName">Enter Cat Name:</label>
+            <input type="text" id="catName" name="catName" value="{cat_name}">
+            <button type="submit">Show Cat</button>
+        </form>
+        <div id="catImageContainer">
+            <img src="{cat_image_url}" alt="{cat_name}"/>
+        </div>
+    </body>
+    </html>
+    '''
 
-@app.put("/todos/{todo_id}")
-def update_todo(todo_id: int, todo: TodoUpdate, db: Session = Depends(get_db)):
-    db_todo = db.query(Todo).filter(Todo.id == todo_id).first()
-    if db_todo is None:
-        raise HTTPException(status_code=404, detail="Todo not found")
-    db_todo.tilte = todo.title
-    db_todo.description = todo.description
-    db.commit()
-    return db_todo
-
-@app.delete("/todos/{todo_id}")
-def delete_todo(todo_id: int, db: Session = Depends(get_db)):
-    db_todo = db.query(Todo).filter(Todo.id == todo_id).first()
-    if db_todo is None:
-        raise HTTPException(status_code=404, detail="Todo not found")
-    db.delete(db_todo)
-    db.commit()
-    return {"ok": True}
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)
